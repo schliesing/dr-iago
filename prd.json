@@ -1,0 +1,156 @@
+{
+  "title": "Dr. IAgo 3 - Melhorias Sprint 1 & 2",
+  "branchName": "feature/improvements-sprint-1-2",
+  "userStories": [
+    {
+      "id": "1",
+      "title": "Dashboard com Gráficos",
+      "description": "Adicionar gráficos no dashboard mostrando crescimento de assinantes, mensagens por dia, taxa de ativação usando Chart.js",
+      "acceptanceCriteria": [
+        "Gráfico de crescimento mensal de assinantes (linha)",
+        "Gráfico de mensagens últimos 7 dias (barras)",
+        "Taxa de conversão Kiwify → Ativo (número)",
+        "Gráficos responsive em mobile"
+      ],
+      "passes": true
+    },
+    {
+      "id": "2",
+      "title": "Exportar Assinantes como CSV",
+      "description": "Botão para download da lista de assinantes em formato CSV com todas as colunas",
+      "acceptanceCriteria": [
+        "Botão 'Exportar CSV' no header da tabela de assinantes",
+        "Arquivo contém: nome, telefone, email, status, data de ativação",
+        "Download funciona em desktop e mobile",
+        "Arquivo em UTF-8 com BOM para Excel abrir corretamente"
+      ],
+      "passes": true
+    },
+    {
+      "id": "3",
+      "title": "Busca Avançada de Assinantes",
+      "description": "Melhorar a busca para permitir filtros por data, status, origem (Kiwify/manual)",
+      "acceptanceCriteria": [
+        "Filtro por intervalo de datas de ativação (desde/até)",
+        "Filtro por origem (kiwify_id vs manual)",
+        "Busca texto e filtros funcionam juntos",
+        "URL reflete filtros atuais para compartilhar"
+      ],
+      "passes": true
+    },
+    {
+      "id": "4",
+      "title": "Log de Mensagens Enviadas",
+      "description": "Adicionar página mostrando histórico de mensagens WhatsApp enviadas",
+      "acceptanceCriteria": [
+        "Nova página /logs de mensagens no menu",
+        "Tabela: data, telefone, preview da msg, status (enviado/erro)",
+        "Busca por telefone ou conteúdo da mensagem",
+        "Paginação (20 msgs por página)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "5",
+      "title": "Estatísticas por Assinante",
+      "description": "Modal mostrando detalhes e estatísticas de um assinante específico",
+      "acceptanceCriteria": [
+        "Clicar em assinante na tabela abre modal com detalhes",
+        "Mostra total de mensagens enviadas",
+        "Mostra data/hora do último contato",
+        "Mostra taxa de resposta (respostas/mensagens)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "6",
+      "title": "Sistema de Notificações do Painel",
+      "description": "Toast notifications quando eventos importantes ocorrem",
+      "acceptanceCriteria": [
+        "Notificação quando novo assinante é adicionado",
+        "Alerta se webhook falhar 3x seguidas",
+        "Toast aparece no canto inferior direito",
+        "Auto-desaparece após 4 segundos"
+      ],
+      "passes": true
+    },
+    {
+      "id": "7",
+      "title": "Temas Light/Dark Mode",
+      "description": "Toggle de dark mode no painel com persistência",
+      "acceptanceCriteria": [
+        "Botão toggle (sol/lua) no footer do sidebar",
+        "Dark mode salvo em localStorage",
+        "Transição suave entre temas (0.3s)",
+        "Tema persiste entre sessões"
+      ],
+      "passes": true
+    },
+    {
+      "id": "8",
+      "title": "Backup Automático do Banco de Dados",
+      "description": "Endpoint e botão para fazer backup do SQLite",
+      "acceptanceCriteria": [
+        "Endpoint POST /api/backup que cria arquivo de backup",
+        "Backups salvos em /root/driago/backups/",
+        "Nome do arquivo: backup-YYYY-MM-DD-HHmmss.db",
+        "Mantém apenas últimos 7 dias de backups"
+      ],
+      "passes": true
+    },
+    {
+      "id": "9",
+      "title": "API Pública para Webhooks Customizados",
+      "description": "Sistema para registrar e gerenciar webhooks customizados",
+      "acceptanceCriteria": [
+        "Página no painel para gerenciar webhooks",
+        "Adicionar/remover URLs de webhook",
+        "Eventos: subscriber:created, message:sent, webhook:failed",
+        "Retry automático em caso de falha (3x)"
+      ],
+      "passes": true
+    },
+    {
+      "id": "10",
+      "title": "Editor Visual do System Prompt com Preview",
+      "description": "Editor lado a lado com preview em tempo real do prompt",
+      "acceptanceCriteria": [
+        "Lado esquerdo: editor de texto do prompt",
+        "Lado direito: preview com resposta do Claude",
+        "Campo de entrada para testar o prompt",
+        "Salva automaticamente a cada 30 segundos"
+      ],
+      "passes": true
+    },
+    {
+      "id": "11",
+      "title": "Mensagem de Boas-vindas para Novos Clientes",
+      "description": "Enviar mensagem de boas-vindas via WhatsApp quando um cliente é adicionado manualmente pelo dashboard",
+      "acceptanceCriteria": [
+        "Quando novo cliente é adicionado via dashboard com status 'active', recebe MSG_BOAS_VINDAS via WhatsApp",
+        "Mensagem contém informações sobre Dr. IAgo e como usar",
+        "Funciona também para clientes vindos de Kiwify (quando mudam de status)",
+        "Erro ao enviar não bloqueia criação do cliente"
+      ],
+      "passes": true
+    }
+  ],
+  "additionalImprovements": {
+    "deepseekIntegration": {
+      "title": "Integração com DeepSeek API",
+      "description": "Substituição do Claude Haiku por DeepSeek Chat para redução de custos",
+      "benefits": [
+        "95% de redução de custos (de $1-5 para $0.028-0.42 por milhão de tokens)",
+        "Performance equivalente a GPT-4",
+        "Mantém compatibilidade total com código anterior"
+      ],
+      "passes": true
+    },
+    "systemPromptVerification": {
+      "title": "Verificação de System Prompt com DeepSeek",
+      "description": "System prompt do dashboard é corretamente carregado e enviado para o DeepSeek API",
+      "verification": "✅ Testado - System prompt carregado do banco de dados e enviado em cada mensagem",
+      "passes": true
+    }
+  }
+}

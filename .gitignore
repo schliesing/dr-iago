@@ -1,0 +1,33 @@
+# Environment
+.env
+.env.local
+.env.production
+
+# Logs
+logs/
+*.log
+
+# Backups
+backups/
+*.db
+
+# Node
+node_modules/
+npm-debug.log*
+
+# System
+.DS_Store
+Thumbs.db
+
+# PM2
+dump.pm2
+
+# Baileys session data (contains credentials)
+data/
+*.session.json
+*.auth_info*
+
+# Backup files
+*.bak
+*.broken*
+*.orig
