@@ -77,7 +77,12 @@ const globalLimiter = rateLimit({
 });
 app.use('/webhook', globalLimiter);
 app.use('/api', globalLimiter);
-app.use(express.json({ limit: '50mb' }));
+// 2mb cobre qualquer JSON legítimo (uploads de arquivo usam multer/multipart).
+// rawBody é necessário pra validar a assinatura HMAC do webhook Kiwify.
+app.use(express.json({
+  limit: '2mb',
+  verify: (req, _res, buf) => { req.rawBody = buf; }
+}));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, '../dashboard/public')));
 

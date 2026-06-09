@@ -15,9 +15,10 @@ const axios = require('axios');
 const { getDb } = require('../db/database');
 
 // Upload em memória
+const MAX_UPLOAD_MB = parseInt(process.env.MAX_UPLOAD_MB || '25', 10);
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: MAX_UPLOAD_MB * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = ['.pdf', '.txt', '.docx', '.doc', '.html', '.htm'];
     const ext = path.extname(file.originalname).toLowerCase();
@@ -25,17 +26,35 @@ const upload = multer({
   }
 });
 
+// Fail-closed: sem JWT_SECRET forte, qualquer um forjaria token de admin
+// (o fallback antigo || 'secret' era uma chave pública conhecida).
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET || JWT_SECRET.length < 20) {
+  console.error('[AUTH] ❌ JWT_SECRET ausente ou curto (<20 chars) no .env — abortando boot');
+  process.exit(1);
+}
+
 // Middleware de autenticação
 function authMiddleware(req, res, next) {
   const token = req.cookies?.token || req.headers.authorization?.replace('Bearer ', '');
   if (!token) return res.status(401).json({ error: 'Não autorizado' });
   try {
-    req.user = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    req.user = jwt.verify(token, JWT_SECRET);
     next();
   } catch {
     res.status(401).json({ error: 'Token inválido' });
   }
 }
+
+// Brute-force: o limiter global (60/min) permitiria 86k tentativas de senha/dia
+const rateLimit = require('express-rate-limit');
+const loginLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Muitas tentativas de login. Aguarde 1 minuto.' }
+});
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 // Baileys status — público (sem auth)
@@ -44,15 +63,15 @@ router.get('/baileys/status', (req, res) => {
   res.json({ whatsapp: status, timestamp: new Date().toISOString() });
 });
 
-router.post('/auth/login', (req, res) => {
+router.post('/auth/login', loginLimiter, (req, res) => {
   const { username, password } = req.body;
   const db = getDb();
   const user = db.prepare("SELECT * FROM admin_users WHERE username = ?").get(username);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     return res.status(401).json({ error: 'Usuário ou senha incorretos' });
   }
-  const token = jwt.sign({ id: user.id, username }, process.env.JWT_SECRET || 'secret', { expiresIn: '12h' });
-  res.cookie('token', token, { httpOnly: true, maxAge: 43200000 });
+  const token = jwt.sign({ id: user.id, username }, JWT_SECRET, { expiresIn: '12h' });
+  res.cookie('token', token, { httpOnly: true, sameSite: 'lax', maxAge: 43200000 });
   res.json({ success: true, token });
 });
 
@@ -235,15 +254,45 @@ router.post('/docs', authMiddleware, upload.single('file'), async (req, res) => 
     const result = db.prepare(
       "INSERT INTO knowledge_docs (filename, original_name, content, size) VALUES (?, ?, ?, ?)"
     ).run(`doc_${Date.now()}${ext}`, req.file.originalname, content, req.file.size);
-    res.json({ id: result.lastInsertRowid, success: true });
+
+    let ragIndexed = false;
+    if (process.env.RAG_INDEX_UPLOADS !== 'false' && content.trim().length > 0) {
+      try {
+        const rag = require('../rag');
+        const chunks = await rag.addDocument(content, {
+          docId: `knowledge_doc_${result.lastInsertRowid}`,
+          name: req.file.originalname,
+          type: 'documento',
+        });
+        ragIndexed = chunks > 0;
+        console.log(`[DOCS] RAG indexou upload ${req.file.originalname}: ${chunks} chunks`);
+      } catch (ragErr) {
+        console.warn(`[DOCS] Upload salvo, mas RAG não indexou: ${ragErr.message}`);
+      }
+    }
+
+    res.json({ id: result.lastInsertRowid, success: true, ragIndexed });
   } catch (err) {
     res.status(500).json({ error: 'Erro ao processar arquivo: ' + err.message });
   }
 });
 
-router.delete('/docs/:id', authMiddleware, (req, res) => {
-  getDb().prepare("DELETE FROM knowledge_docs WHERE id = ?").run(req.params.id);
-  res.json({ success: true });
+router.delete('/docs/:id', authMiddleware, async (req, res) => {
+  const db = getDb();
+  const doc = db.prepare("SELECT id, original_name FROM knowledge_docs WHERE id = ?").get(req.params.id);
+  if (!doc) return res.status(404).json({ error: 'Documento não encontrado' });
+
+  db.prepare("DELETE FROM knowledge_docs WHERE id = ?").run(req.params.id);
+
+  let ragDeleted = false;
+  try {
+    const rag = require('../rag');
+    ragDeleted = await rag.deleteByDocId(`knowledge_doc_${doc.id}`);
+  } catch (ragErr) {
+    console.warn(`[DOCS] Documento removido do SQLite, mas RAG não removeu vetores: ${ragErr.message}`);
+  }
+
+  res.json({ success: true, ragDeleted });
 });
 
 // ─── STATS ────────────────────────────────────────────────────────────────────
@@ -298,25 +347,25 @@ router.get('/messages', authMiddleware, (req, res) => {
   let where = "WHERE 1=1";
   const params = [];
   if (search) {
-    where += " AND (phone LIKE ? OR content LIKE ?)";
+    where += " AND (c.phone LIKE ? OR c.content LIKE ?)";
     params.push(`%${search}%`, `%${search}%`);
   }
-  const total = db.prepare(`SELECT COUNT(*) as n FROM conversations ${where}`).get(...params).n;
+  const total = db.prepare(`SELECT COUNT(*) as n FROM conversations c ${where}`).get(...params).n;
   const msgs  = db.prepare(`SELECT c.*, s.name as subscriber_name FROM conversations c LEFT JOIN subscribers s ON c.phone = s.phone ${where} ORDER BY c.created_at DESC LIMIT ? OFFSET ?`).all(...params, parseInt(limit), offset);
   res.json({ msgs, total, pages: Math.ceil(total / parseInt(limit)), page: parseInt(page) });
 });
 
 // ─── BACKUP ───────────────────────────────────────────────────────────────────
-router.post('/backup', authMiddleware, (req, res) => {
+router.post('/backup', authMiddleware, async (req, res) => {
   try {
-    const backupDir = path.join(__dirname, '../../../backups');
+    const backupDir = path.join(__dirname, '../../backups');
     if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     const backupPath = path.join(backupDir, `backup-${ts}.db`);
 
     const db = getDb();
-    db.backup(backupPath);
+    await db.backup(backupPath);
 
     const files = fs.readdirSync(backupDir)
       .filter(f => f.endsWith('.db'))
@@ -333,7 +382,7 @@ router.post('/backup', authMiddleware, (req, res) => {
 
 router.get('/backup/list', authMiddleware, (req, res) => {
   try {
-    const backupDir = path.join(__dirname, '../../../backups');
+    const backupDir = path.join(__dirname, '../../backups');
     if (!fs.existsSync(backupDir)) return res.json([]);
     const files = fs.readdirSync(backupDir)
       .filter(f => f.endsWith('.db'))
